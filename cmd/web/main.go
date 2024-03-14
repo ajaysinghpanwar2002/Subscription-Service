@@ -6,7 +6,9 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/alexedwards/scs/redisstore"
@@ -20,15 +22,22 @@ import (
 const webPort = "80"
 
 func main() {
+	// connect to the database
 	db := initDB()
 
+	// create sessions
 	session := initSession()
 
+	// create loggers
 	infoLog := log.New(os.Stdout, "INFO\t", log.Ldate|log.Ltime)
 	errorLog := log.New(os.Stdout, "ERROR\t", log.Ldate|log.Ltime|log.Lshortfile)
 
+	// create channels
+
+	// create waitgroup
 	wg := sync.WaitGroup{}
 
+	// set up the application config
 	app := Config{
 		Session:  session,
 		DB:       db,
@@ -37,6 +46,12 @@ func main() {
 		Wait:     &wg,
 	}
 
+	// set up mail
+
+	// listen for signals
+	go app.listenForShutdown()
+
+	// listen for web connections
 	app.serve()
 }
 
@@ -47,14 +62,14 @@ func (app *Config) serve() {
 		Handler: app.routes(),
 	}
 
-	app.InfoLog.Println("Starting web server")
+	app.InfoLog.Println("Starting web server...")
 	err := srv.ListenAndServe()
-
 	if err != nil {
 		log.Panic(err)
 	}
 }
 
+// initDB connects to Postgres and returns a pool of connections
 func initDB() *sql.DB {
 	conn := connectToDB()
 	if conn == nil {
@@ -63,16 +78,19 @@ func initDB() *sql.DB {
 	return conn
 }
 
+// connectToDB tries to connect to postgres, and backs off until a connection
+// is made, or we have not connected after 10 tries
 func connectToDB() *sql.DB {
 	counts := 0
 
 	dsn := os.Getenv("DSN")
+
 	for {
-		connection, err := openDb(dsn)
+		connection, err := openDB(dsn)
 		if err != nil {
-			log.Println("Postgres not yet ready...")
+			log.Println("postgres not yet ready...")
 		} else {
-			log.Print("Connected to database!")
+			log.Print("connected to database!")
 			return connection
 		}
 
@@ -88,9 +106,10 @@ func connectToDB() *sql.DB {
 	}
 }
 
-func openDb(dsn string) (*sql.DB, error) {
+// openDB opens a connection to Postgres, using a DSN read
+// from the environment variable DSN
+func openDB(dsn string) (*sql.DB, error) {
 	db, err := sql.Open("pgx", dsn)
-
 	if err != nil {
 		return nil, err
 	}
@@ -103,15 +122,21 @@ func openDb(dsn string) (*sql.DB, error) {
 	return db, nil
 }
 
+// initSession sets up a session, using Redis for session store
 func initSession() *scs.SessionManager {
+	// set up session
 	session := scs.New()
 	session.Store = redisstore.New(initRedis())
 	session.Lifetime = 24 * time.Hour
+	session.Cookie.Persist = true
 	session.Cookie.SameSite = http.SameSiteLaxMode
 	session.Cookie.Secure = true
+
 	return session
 }
 
+// initRedis returns a pool of connections to Redis using the
+// environment variable REDIS
 func initRedis() *redis.Pool {
 	redisPool := &redis.Pool{
 		MaxIdle: 10,
@@ -119,5 +144,22 @@ func initRedis() *redis.Pool {
 			return redis.Dial("tcp", os.Getenv("REDIS"))
 		},
 	}
+
 	return redisPool
+}
+
+func (app *Config) listenForShutdown() {
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	app.shutdown()
+	os.Exit(0)
+}
+
+func (app *Config) shutdown() {
+	app.InfoLog.Println("would run cleanup tasks...")
+
+	// block until waitgroup is empty
+	app.Wait.Wait()
+	app.InfoLog.Println("closing channels and shutting down applications...")
 }

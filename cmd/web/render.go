@@ -2,8 +2,8 @@ package main
 
 import (
 	"fmt"
+	"html/template"
 	"net/http"
-	"text/template"
 	"time"
 )
 
@@ -19,16 +19,16 @@ type TemplateData struct {
 	Error         string
 	Authenticated bool
 	Now           time.Time
-	// User 			*data.User
+	// User *data.User
 }
 
 func (app *Config) render(w http.ResponseWriter, r *http.Request, t string, td *TemplateData) {
 	partials := []string{
 		fmt.Sprintf("%s/base.layout.gohtml", pathToTemplates),
-		fmt.Sprintf("%s/header.layout.gohtml", pathToTemplates),
-		fmt.Sprintf("%s/navbar.layout.gohtml", pathToTemplates),
-		fmt.Sprintf("%s/footer.layout.gohtml", pathToTemplates),
-		fmt.Sprintf("%s/alerts.layout.gohtml", pathToTemplates),
+		fmt.Sprintf("%s/header.partial.gohtml", pathToTemplates),
+		fmt.Sprintf("%s/navbar.partial.gohtml", pathToTemplates),
+		fmt.Sprintf("%s/footer.partial.gohtml", pathToTemplates),
+		fmt.Sprintf("%s/alerts.partial.gohtml", pathToTemplates),
 	}
 
 	var templateSlice []string
@@ -42,15 +42,14 @@ func (app *Config) render(w http.ResponseWriter, r *http.Request, t string, td *
 		td = &TemplateData{}
 	}
 
-	templ, err := template.ParseFiles(templateSlice...)
-
+	tmpl, err := template.ParseFiles(templateSlice...)
 	if err != nil {
 		app.ErrorLog.Println(err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	if err := templ.Execute(w, app.AddDefaultData(td, r)); err != nil {
+	if err := tmpl.Execute(w, app.AddDefaultData(td, r)); err != nil {
 		app.ErrorLog.Println(err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -63,8 +62,10 @@ func (app *Config) AddDefaultData(td *TemplateData, r *http.Request) *TemplateDa
 	td.Error = app.Session.PopString(r.Context(), "error")
 	if app.IsAuthenticated(r) {
 		td.Authenticated = true
+		// TODO - get more user information
 	}
 	td.Now = time.Now()
+
 	return td
 }
 
