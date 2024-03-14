@@ -1,26 +1,29 @@
-# Define environment variables
-$env:DSN="host=localhost port=5432 user=postgres password=password dbname=concurrency sslmode=disable timezone=UTC connect_timeout=5"
-$env:BINARY_NAME="myapp.exe"
-$env:REDIS="127.0.0.1:6379"
+$BINARY_NAME = "myapp"
+$DSN = "host=localhost port=5432 user=postgres password=password dbname=concurrency sslmode=disable timezone=UTC connect_timeout=5"
+$REDIS = "127.0.0.1:6379"
 
 function Build {
-    Write-Host "Building..."
-    go build -o $env:BINARY_NAME ./cmd/web
-    Write-Host "Back end built!"
+    Write-Output "Building..."
+    $env:CGO_ENABLED = "0"
+    go build -ldflags="-s -w" -o $BINARY_NAME ./cmd/web
+    Remove-Item env:CGO_ENABLED
+    Write-Output "Built!"
 }
 
 function Run {
     Build
-    Write-Host "Starting..."
-    Start-Process -WindowStyle Minimized -FilePath cmd.exe -ArgumentList "/c", $env:BINARY_NAME
-    Write-Host "Back end started!"
+    Write-Output "Starting..."
+    $env:DSN = $DSN
+    $env:REDIS = $REDIS
+    Start-Process -FilePath ".\$BINARY_NAME" -NoNewWindow
+    Write-Output "Started!"
 }
 
 function Clean {
-    Write-Host "Cleaning..."
-    Remove-Item $env:BINARY_NAME -ErrorAction Ignore
+    Write-Output "Cleaning..."
     go clean
-    Write-Host "Cleaned!"
+    Remove-Item $BINARY_NAME
+    Write-Output "Cleaned!"
 }
 
 function Start {
@@ -28,9 +31,9 @@ function Start {
 }
 
 function Stop {
-    Write-Host "Stopping..."
-    Stop-Process -Name $env:BINARY_NAME -Force -ErrorAction SilentlyContinue
-    Write-Host "Stopped back end"
+    Write-Output "Stopping..."
+    Get-Process | Where-Object {$_.Path -eq (Resolve-Path $BINARY_NAME)} | Stop-Process -Force
+    Write-Output "Stopped!"
 }
 
 function Restart {
@@ -39,18 +42,14 @@ function Restart {
 }
 
 function Test {
-    Write-Host "Testing..."
+    Write-Output "Testing..."
     go test -v ./...
 }
 
-# To directly call a function from the command line arguments
-switch ($args[0]) {
-    "build" { Build }
-    "run" { Run }
-    "clean" { Clean }
-    "start" { Start }
-    "stop" { Stop }
-    "restart" { Restart }
-    "test" { Test }
-    default { Write-Host "Invalid command." }
-}
+# Example usage: Uncomment the function call you wish to execute.
+
+Run
+# Clean
+# Stop
+# Restart
+# Test
