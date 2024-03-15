@@ -9,3 +9,10 @@
 ```
 db.sql
 ```
+
+### Core features
+
+* #### Sending Email
+    * Sending email can slow things down
+    * Send it in the background, using two channels
+    * Adding cleanup task on app shutdown.

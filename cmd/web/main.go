@@ -2,11 +2,13 @@ package main
 
 import (
 	"database/sql"
+	"encoding/gob"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"subscription-service/data"
 	"sync"
 	"syscall"
 	"time"
@@ -44,6 +46,7 @@ func main() {
 		InfoLog:  infoLog,
 		ErrorLog: errorLog,
 		Wait:     &wg,
+		Models:   data.New(db),
 	}
 
 	// set up mail
@@ -124,6 +127,8 @@ func openDB(dsn string) (*sql.DB, error) {
 
 // initSession sets up a session, using Redis for session store
 func initSession() *scs.SessionManager {
+	gob.Register(data.User{})
+
 	// set up session
 	session := scs.New()
 	session.Store = redisstore.New(initRedis())
@@ -157,9 +162,11 @@ func (app *Config) listenForShutdown() {
 }
 
 func (app *Config) shutdown() {
+	// perform any cleanup tasks
 	app.InfoLog.Println("would run cleanup tasks...")
 
 	// block until waitgroup is empty
 	app.Wait.Wait()
-	app.InfoLog.Println("closing channels and shutting down applications...")
+
+	app.InfoLog.Println("closing channels and shutting down application...")
 }
